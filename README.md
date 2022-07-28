@@ -17,9 +17,9 @@
 4. Type collection name
 5. Input pointer column name and Pointer's actual class name. put single space between them. 
     - ex) 
-        user _User *press Enter
-        book Book *press Enter
-        EXIT *press Enter
+        - user _User *press Enter
+        - book Book *press Enter
+        - EXIT *press Enter
 
 
 
