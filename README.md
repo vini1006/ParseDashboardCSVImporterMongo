@@ -21,5 +21,10 @@
         - book Book *press Enter
         - EXIT *press Enter
 
+6. Input Date column name (except createdAt updatedAt)
+    - ex)
+        - startDate *press Enter
+        - EXIT *press Enter
+
 
 
