@@ -105,6 +105,11 @@ const converted_folder_name = 'CONVERTED';
                 continue;
             }
 
+            if (key === 'ACL') {
+                keyToDelete.push(key);
+                data['_acl'] = data[key];
+            }
+
             if (key === 'objectId') {
                 keyToDelete.push(key);
                 data['_id'] = data[key];
