@@ -68,7 +68,7 @@ const converted_folder_name = 'CONVERTED';
     output.write('\033c'); ;
 
     console.log(`Specify the pointer column and its column name, put a single space between them and press ENTER \n\nex) user _User 🚀 \n\nIf you're done. type "EXIT" and press Enter  `);
-    const lines = await getUserMultiLineInput() ?? [];
+    const lines = await getUserMultiLineInput(' ') ?? [];
     output.write('\033c'); ;
 
     console.log(lines.join('\n'), '\n\nReceived 🚀');
@@ -83,6 +83,17 @@ const converted_folder_name = 'CONVERTED';
         pointerChangeMapper.set(columnName, [`_p_${columnName}`, className ]);
     }
     output.write('\033c'); ;
+
+    
+
+    console.log(`Input the date columns and press "Enter(return)"🚀 \n\nIf you're done. type "EXIT" and press Enter`);
+    const lines_dateCols = await getUserMultiLineInput() ?? [];
+    
+    const set_lines_dateCols = new Set(lines_dateCols);
+    // output.write('\033c'); ;
+
+    console.log(lines.join('\n'), '\n\nReceived 🚀');
+    
 
     console.log(fileName + ' Received. Starting conversion... 🚀 ');
     await waitSec(1.5);
@@ -103,6 +114,10 @@ const converted_folder_name = 'CONVERTED';
             if (data[key] === '') {
                 keyToDelete.push(key);
                 continue;
+            }
+
+            if (set_lines_dateCols.has(key)) {
+                data[key] = new Date(data[key]);
             }
 
             if (key === 'ACL') {
@@ -154,7 +169,7 @@ const converted_folder_name = 'CONVERTED';
             delete data[key];
         }
     }
-    output.write('\033c'); ;
+    // output.write('\033c'); ;
     console.log(' :: Convert done :: 🚀');
     console.log('Starting export the JSON File 🚀');
     console.log('Starting Import JSON Array to collection 🚀');
@@ -170,7 +185,7 @@ const converted_folder_name = 'CONVERTED';
 
     fs.writeFileSync(`./${converted_folder_name}/${fileName.replace('.csv', '.json')}`, JSON.stringify(JSON_ARRAY, null, 2));
 
-    output.write('\033c'); ;
+    // output.write('\033c'); ;
     console.log('~~ EXPORT JSON FILE AND IMPORT DONE  ~~ 🚀' + fileName.replace('.csv', '.json') + 'HAS BEEN CREATED');
     exitProcess();
     return;
@@ -197,16 +212,24 @@ async function getUserInput () {
     });
 }
 
-/** @returns {Promise<string[]>} */
-async function getUserMultiLineInput () {
+/** 
+ * @param {string} searchString - string to check with includes wether to push to arr
+ * @returns {Promise<string[]>} 
+ */
+async function getUserMultiLineInput (searchString) {
     const data = [];
     return new Promise((resolve, reject) => {
         reader.on('line',
         /** @param {string} line */
          (line) => {
             const trim = line.trim();
-            if (trim === 'EXIT') resolve(data);
-            if (trim.includes(' ')) data.push(trim);
+            if (trim === 'EXIT') return resolve(data);
+
+            if(!searchString) {
+                data.push(trim);
+            } else if (trim.includes(searchString)) {
+                data.push(trim);
+            }
         });
     });
 }
