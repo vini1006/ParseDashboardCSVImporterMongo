@@ -1,3 +1,13 @@
+require("dotenv").config();
+
+const Parse = require('parse/node');
+const APP_ID = process.env.APP_ID;
+const JAVASCRIPT_KEY = process.env.JAVASCRIPT_KEY;
+const MASTER_KEY = process.env.MASTER_KEY;
+
+Parse.initialize(APP_ID, JAVASCRIPT_KEY, MASTER_KEY);
+Parse.serverURL = "http://localhost:1337/parse";
+
 const fs = require('fs');
 const mongo = require('mongodb');
 
@@ -50,52 +60,25 @@ const converted_folder_name = 'CONVERTED';
     if (!dbName) return exitProcess('NO NAME PASSED');
     const DB = connection.db(dbName);
 
-    /*********************
-     * Select Collection *
-     *********************/
-
-    console.log('Input the class (collection) name \n\n');
-    const collectionName = await getUserInput();
-    output.write('\033c'); 
-    const collection = DB.collection(collectionName);
-
-    /***********************
-     * Select the CSV File *
-     ***********************/
+    /***************************************************
+     * Select the CSV File and Extract Collection name *
+     ***************************************************/
 
     selector.init(fileList, 'Select the file \n\n');
     const fileName = await getSelected(selector);
+
+    const collectionName = await ( async () => {
+        console.log('If you want to use other name as collection. Type it and Enter \n If not just press enter.')
+        const userInput = await getUserInput();
+        const trimmed = userInput?.trim();
+        if (trimmed) return trimmed;
+
+        const [ _collectionName, __ext ] = fileName.split('.csv')
+        return _collectionName;
+    })();
     output.write('\033c'); ;
-
-    console.log(`Specify the pointer column and its column name, put a single space between them and press ENTER \n\nex) user _User 🚀 \n\nIf you're done. type "EXIT" and press Enter  `);
-    const lines = await getUserMultiLineInput(' ') ?? [];
-    output.write('\033c'); ;
-
-    console.log(lines.join('\n'), '\n\nReceived 🚀');
-    await waitSec(1.5);
-
-    /**
-     * @type {Map<string, [string, string]>}
-     */
-    const pointerChangeMapper = new Map();
-    for ( let i = 0; i < lines.length; i++ ) {
-        const [ columnName, className ] = lines[i].split(' ');
-        pointerChangeMapper.set(columnName, [`_p_${columnName}`, className ]);
-    }
-    output.write('\033c'); ;
-
     
-
-    console.log(`Input the date columns and press "Enter(return)"🚀 \n\nIf you're done. type "EXIT" and press Enter`);
-    const lines_dateCols = await getUserMultiLineInput() ?? [];
-    
-    const set_lines_dateCols = new Set(lines_dateCols);
-    // output.write('\033c'); ;
-
-    console.log(lines.join('\n'), '\n\nReceived 🚀');
-    
-
-    console.log(fileName + ' Received. Starting conversion... 🚀 ');
+    const collection = DB.collection(collectionName);
     await waitSec(1.5);
 
     /***************************
@@ -105,8 +88,9 @@ const converted_folder_name = 'CONVERTED';
     const JSON_ARRAY = await _CSVToJSON.fromFile(`./EXPORTED_DATAS/${fileName}`);
 
     /*******************************
-     * Fixed the object (row) form *
+     * Fix the object (row) form *
      *******************************/
+    const transitMap = await getParseColumnTransMap(collectionName);
     for (let i = 0; i < JSON_ARRAY.length; i++ ) {
         const data = JSON_ARRAY[i];
         const keyToDelete = [];
@@ -116,55 +100,55 @@ const converted_folder_name = 'CONVERTED';
                 continue;
             }
 
-            if (set_lines_dateCols.has(key)) {
-                data[key] = new Date(data[key]);
+            if (key === 'createdAt') {
+                keyToDelete.push(key);
+                const date = data[key];
+                data['_created_at'] = date;
+                continue;
             }
 
-            if (key === 'ACL') {
+            if (key === 'updatedAt') {
                 keyToDelete.push(key);
-                data['_acl'] = data[key];
+                const date = data[key];
+                data['_updated_at'] = date;
+                continue;
             }
 
             if (key === 'objectId') {
                 keyToDelete.push(key);
                 data['_id'] = data[key];
+                continue;
             }
 
-            if (key === 'createdAt') {
-                const date = data[key];
-                data['_created_at'] = date;
-            }
-
-            if (key === 'updatedAt') {
-                const date = data[key];
-                data['_updated_at'] = date;
-            }
-
-            const changeObject = pointerChangeMapper.get(key);
-            if (changeObject) {
-                const pointerId = data[key];
-                const [ changedColName , className ] = changeObject;
-                data[changedColName] = `${className}$${pointerId}`;
-                keyToDelete.push(key);
-            }
-
-            const value = data[key];
-            if (typeof value == 'string' &&
-                (value.indexOf('{') === 0 || value.indexOf('[') === 0)
-            ) { 
-                
-                try {
-                    data[key] = JSON.parse(value); 
-                } catch (error) {
-                    //
+            const [ type, targetClass ] = transitMap.get(key) ?? [];
+            switch (type) {
+                case 'ACL': {
+                    keyToDelete.push(key);
+                    data['_acl'] = data[key];
+                    break;
+                }
+                case 'Pointer': {
+                    keyToDelete.push(key);
+                    data[`_p_${key}`] = `${targetClass}$${data[key]}`;
+                    break;
+                }
+                case 'Date': {
+                    data[key] = new Date(data[key]);
+                    break;
+                }
+                case 'Number': {
+                    data[key] = parseInt(data[key]);
+                    break;
+                }
+                case 'Object':
+                case 'Array':
+                case 'Boolean': {
+                    data[key] = JSON.parse(data[key]);
+                    break;
                 }
             }
         }
 
-
-
-        delete data['createdAt'];
-        delete data['updatedAt'];
         for (let key of keyToDelete) {
             delete data[key];
         }
@@ -205,10 +189,11 @@ async function readFileFromDir () {
 /** @returns {Promise<string>} */
 async function getUserInput () {
     return new Promise((resolve, reject) => {
-        reader.on('line', (line) => {
+        const lineHandler = (line) => {
             resolve(line);
-            // reader.close();
-        });
+            reader.removeListener('line', lineHandler);
+        }
+        reader.on('line', lineHandler);
     });
 }
 
@@ -273,6 +258,30 @@ async function getSelected (selector) {
         };
         input.on('keypress', inputHandler);
     })
+}
+
+/**
+ * @template {string} columnName
+ * @template {string} columnType
+ * @template {string} targetClass
+ */
+
+/**
+ * @param {string} collectionName 
+ * @returns {Promise<Map<columnName, [columnType, targetClass]>>}
+ */
+async function getParseColumnTransMap (collectionName) {  
+    const schema = await new Parse.Schema(collectionName).get();
+    if (!schema) throw 'You should set schema first, ask VINI';
+
+    const typeMapper = new Map();
+
+    const { fields } = schema;
+    for ( let key in fields ) {
+        const { type, targetClass } = fields[key];
+        typeMapper.set(key, [type, targetClass]);
+    }
+    return typeMapper;
 }
 
 
